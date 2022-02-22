@@ -20,6 +20,7 @@ import (
 	"time"
 	"github.com/fatih/color"
 	_ "github.com/go-sql-driver/mysql"
+	"errors"
 )
 
 const (
@@ -219,7 +220,7 @@ func difference(a, b []string) []string {
 	return ab
 }
 
-func GenerateTableBackup(options Options, db string, table Table) {
+func GenerateTableBackup(options Options, db string, table Table) error {
 	PrintMessage("Generating table backup. Database : "+db+"\t\tTableName : "+table.TableName+"\t\tRowCount : "+strconv.Itoa(table.RowCount), options.Verbosity, Info)
 
 	index := 1
@@ -240,7 +241,7 @@ func GenerateTableBackup(options Options, db string, table Table) {
 
 		timestamp := strings.Replace(strings.Replace(options.ExecutionStartDate.Format("2006-01-02"), "-", "", -1), ":", "", -1)
 		filename := path.Join(options.OutputDirectory, "daily", timeNow.Format("2006-01-02"), db+"-"+options.ExecutionStartDate.Format("2006-01-02"), fmt.Sprintf("%s_%s%d_%s.sql", db, table.TableName, index, timestamp))
-		_ = os.Mkdir(path.Dir(filename), os.ModePerm)
+		os.MkdirAll(path.Dir(filename), os.ModePerm)
 
 		args = append(args, fmt.Sprintf("-r%s", filename))
 
@@ -264,7 +265,7 @@ func GenerateTableBackup(options Options, db string, table Table) {
 
 		if string(err) != "" {
 			PrintMessage("mysqldump error is: "+string(err), options.Verbosity, Error)
-			os.Exit(4)
+			return errors.New(string(err))
 		}
 
 		// Compressing
@@ -275,7 +276,7 @@ func GenerateTableBackup(options Options, db string, table Table) {
 
 		if errcreate != nil {
 			PrintMessage("error to create a compressed file: "+filename, options.Verbosity, Error)
-			os.Exit(4)
+			return errcreate
 		}
 
 		defer file.Close()
@@ -287,13 +288,14 @@ func GenerateTableBackup(options Options, db string, table Table) {
 
 		if errcompress := Compress(tw, filename); errcompress != nil {
 			PrintMessage("error to compress file: "+filename, options.Verbosity, Error)
-			os.Exit(4)
+			return errcompress
 		}
 
 		index++
 	}
 
 	PrintMessage("Table backup successfull. Database : "+db+"\t\tTableName : "+table.TableName, options.Verbosity, Info)
+	return nil
 }
 
 func GenerateSchemaBackup(options Options, db string) {
@@ -312,7 +314,7 @@ func GenerateSchemaBackup(options Options, db string) {
 
 	timestamp := strings.Replace(strings.Replace(options.ExecutionStartDate.Format("2006-01-02"), "-", "", -1), ":", "", -1)
 	filename := path.Join(options.OutputDirectory, "daily", timeNow.Format("2006-01-02"), db+"-"+options.ExecutionStartDate.Format("2006-01-02"), fmt.Sprintf("%s_%s_%s.sql", db, "SCHEMA", timestamp))
-	_ = os.Mkdir(path.Dir(filename), os.ModePerm)
+	os.MkdirAll(path.Dir(filename), os.ModePerm)
 
 	args = append(args, fmt.Sprintf("-r%s", filename))
 
@@ -381,7 +383,7 @@ func GenerateSingleFileDataBackup(options Options, db string) {
 
 	timestamp := strings.Replace(strings.Replace(options.ExecutionStartDate.Format("2006-01-02"), "-", "", -1), ":", "", -1)
 	filename := path.Join(options.OutputDirectory, "daily", timeNow.Format("2006-01-02"), db+"-"+options.ExecutionStartDate.Format("2006-01-02"), fmt.Sprintf("%s_%s_%s.sql", db, "DATA", timestamp))
-	_ = os.Mkdir(path.Dir(filename), os.ModePerm)
+	os.MkdirAll(path.Dir(filename), os.ModePerm)
 
 	args = append(args, fmt.Sprintf("-r%s", filename))
 
@@ -446,7 +448,7 @@ func GenerateSingleFileBackup(options Options, db string) {
 
 	timestamp := strings.Replace(strings.Replace(options.ExecutionStartDate.Format("2006-01-02"), "-", "", -1), ":", "", -1)
 	filename := path.Join(options.OutputDirectory, "daily", timeNow.Format("2006-01-02"), db+"-"+options.ExecutionStartDate.Format("2006-01-02"), fmt.Sprintf("%s_%s_%s.sql", db, "ALL", timestamp))
-	_ = os.Mkdir(path.Dir(filename), os.ModePerm)
+	os.MkdirAll(path.Dir(filename), os.ModePerm)
 
 	args = append(args, fmt.Sprintf("-r%s", filename))
 
