@@ -1,4 +1,4 @@
-package main
+package mars
 
 import (
 	"archive/tar"
@@ -18,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
 	"github.com/fatih/color"
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -50,63 +49,22 @@ type Options struct {
 	Password          string
 	Databases         []string
 	ExcludedDatabases []string
-
 	DatabaseRowCountTreshold int
 	TableRowCountTreshold    int
 	BatchSize                int
 	ForceSplit               bool
-
 	AdditionalMySQLDumpArgs string
-
 	Verbosity              int
 	MySQLDumpPath          string
 	OutputDirectory        string
 	DefaultsProvidedByUser bool
 	ExecutionStartDate     time.Time
-
 	DailyRotation        int
 	WeeklyRotation       int
 	MonthlyRotation      int
 }
 
-func main() {
-	options := GetOptions()
 
-	for _, db := range options.Databases {
-		printMessage("Processing Database : "+db, options.Verbosity, Info)
-
-		tables := GetTables(options.HostName, options.Bind, options.UserName, options.Password, db, options.Verbosity)
-		totalRowCount := getTotalRowCount(tables)
-
-		if !options.ForceSplit && totalRowCount <= options.DatabaseRowCountTreshold {
-			// options.ForceSplit is false
-			// and if total row count of a database is below defined threshold
-			// then generate one file containing both schema and data
-
-			printMessage(fmt.Sprintf("options.ForceSplit (%t) && totalRowCount (%d) <= options.DatabaseRowCountTreshold (%d)", options.ForceSplit, totalRowCount, options.DatabaseRowCountTreshold), options.Verbosity, Info)
-			generateSingleFileBackup(*options, db)
-		} else if options.ForceSplit && totalRowCount <= options.DatabaseRowCountTreshold {
-			// options.ForceSplit is true
-			// and if total row count of a database is below defined threshold
-			// then generate two files one for schema, one for data
-
-			generateSchemaBackup(*options, db)
-			generateSingleFileDataBackup(*options, db)
-		} else if totalRowCount > options.DatabaseRowCountTreshold {
-			generateSchemaBackup(*options, db)
-
-			for _, table := range tables {
-				generateTableBackup(*options, db, table)
-			}
-		}
-
-		printMessage("Processing done for database : "+db, options.Verbosity, Info)
-	}
-
-	// Backups retentions validation
-	BackupRotation(*options)
-
-}
 
 // NewTable returns a new Table instance.
 func NewTable(tableName string, rowCount int) *Table {
@@ -118,7 +76,7 @@ func NewTable(tableName string, rowCount int) *Table {
 
 // GetTables retrives list of tables with rowcounts
 func GetTables(hostname string, bind string, username string, password string, database string, verbosity int) []Table {
-	printMessage("Getting tables for database : "+database, verbosity, Info)
+	PrintMessage("Getting tables for database : "+database, verbosity, Info)
 
 	db, err := sql.Open("mysql", username+":"+password+"@tcp("+hostname+":"+bind+")/"+database)
 
@@ -141,14 +99,14 @@ func GetTables(hostname string, bind string, username string, password string, d
 		result = append(result, *NewTable(tableName, rowCount))
 	}
 
-	printMessage(strconv.Itoa(len(result))+" tables retrived : "+database, verbosity, Info)
+	PrintMessage(strconv.Itoa(len(result))+" tables retrived : "+database, verbosity, Info)
 
 	return result
 }
 
 // GetDatabaseList retrives list of databases on mysql
 func GetDatabaseList(hostname string, bind string, username string, password string, verbosity int) []string {
-	printMessage("Getting databases : "+hostname, verbosity, Info)
+	PrintMessage("Getting databases : "+hostname, verbosity, Info)
 
 	db, err := sql.Open("mysql", username+":"+password+"@tcp("+hostname+":"+bind+")/mysql")
 	checkErr(err)
@@ -169,7 +127,7 @@ func GetDatabaseList(hostname string, bind string, username string, password str
 		result = append(result, databaseName)
 	}
 
-	printMessage(strconv.Itoa(len(result))+" databases retrived : "+hostname, verbosity, Info)
+	PrintMessage(strconv.Itoa(len(result))+" databases retrived : "+hostname, verbosity, Info)
 
 	return result
 }
@@ -261,8 +219,8 @@ func difference(a, b []string) []string {
 	return ab
 }
 
-func generateTableBackup(options Options, db string, table Table) {
-	printMessage("Generating table backup. Database : "+db+"\t\tTableName : "+table.TableName+"\t\tRowCount : "+strconv.Itoa(table.RowCount), options.Verbosity, Info)
+func GenerateTableBackup(options Options, db string, table Table) {
+	PrintMessage("Generating table backup. Database : "+db+"\t\tTableName : "+table.TableName+"\t\tRowCount : "+strconv.Itoa(table.RowCount), options.Verbosity, Info)
 
 	index := 1
 	for counter := 0; counter <= table.RowCount; counter += options.BatchSize {
@@ -295,28 +253,28 @@ func generateTableBackup(options Options, db string, table Table) {
 		cmdOut, _ := cmd.StdoutPipe()
 		cmdErr, _ := cmd.StderrPipe()
 
-		printMessage("mysqldump is being executed with parameters : "+strings.Join(cmd.Args, " "), options.Verbosity, Info)
+		PrintMessage("mysqldump is being executed with parameters : "+strings.Join(cmd.Args, " "), options.Verbosity, Info)
 		cmd.Start()
 
 		output, _ := ioutil.ReadAll(cmdOut)
 		err, _ := ioutil.ReadAll(cmdErr)
 		cmd.Wait()
 
-		printMessage("mysqldump output is : "+string(output), options.Verbosity, Info)
+		PrintMessage("mysqldump output is : "+string(output), options.Verbosity, Info)
 
 		if string(err) != "" {
-			printMessage("mysqldump error is: "+string(err), options.Verbosity, Error)
+			PrintMessage("mysqldump error is: "+string(err), options.Verbosity, Error)
 			os.Exit(4)
 		}
 
 		// Compressing
-		printMessage("Compressing table file : "+filename, options.Verbosity, Info)
+		PrintMessage("Compressing table file : "+filename, options.Verbosity, Info)
 
 		// set up the output file
 		file, errcreate := os.Create(filename + ".tar.gz")
 
 		if errcreate != nil {
-			printMessage("error to create a compressed file: "+filename, options.Verbosity, Error)
+			PrintMessage("error to create a compressed file: "+filename, options.Verbosity, Error)
 			os.Exit(4)
 		}
 
@@ -328,18 +286,18 @@ func generateTableBackup(options Options, db string, table Table) {
 		defer tw.Close()
 
 		if errcompress := Compress(tw, filename); errcompress != nil {
-			printMessage("error to compress file: "+filename, options.Verbosity, Error)
+			PrintMessage("error to compress file: "+filename, options.Verbosity, Error)
 			os.Exit(4)
 		}
 
 		index++
 	}
 
-	printMessage("Table backup successfull. Database : "+db+"\t\tTableName : "+table.TableName, options.Verbosity, Info)
+	PrintMessage("Table backup successfull. Database : "+db+"\t\tTableName : "+table.TableName, options.Verbosity, Info)
 }
 
-func generateSchemaBackup(options Options, db string) {
-	printMessage("Generating schema backup : "+db, options.Verbosity, Info)
+func GenerateSchemaBackup(options Options, db string) {
+	PrintMessage("Generating schema backup : "+db, options.Verbosity, Info)
 
 	var args []string
 	args = append(args, fmt.Sprintf("-h%s", options.HostName))
@@ -360,7 +318,7 @@ func generateSchemaBackup(options Options, db string) {
 
 	args = append(args, db)
 
-	printMessage("mysqldump is being executed with parameters : "+strings.Join(args, " "), options.Verbosity, Info)
+	PrintMessage("mysqldump is being executed with parameters : "+strings.Join(args, " "), options.Verbosity, Info)
 
 	cmd := exec.Command(options.MySQLDumpPath, args...)
 	cmdOut, _ := cmd.StdoutPipe()
@@ -372,21 +330,21 @@ func generateSchemaBackup(options Options, db string) {
 	err, _ := ioutil.ReadAll(cmdErr)
 	cmd.Wait()
 
-	printMessage("mysqldump output is : "+string(output), options.Verbosity, Info)
+	PrintMessage("mysqldump output is : "+string(output), options.Verbosity, Info)
 
 	if string(err) != "" {
-		printMessage("mysqldump error is: "+string(err), options.Verbosity, Error)
+		PrintMessage("mysqldump error is: "+string(err), options.Verbosity, Error)
 		os.Exit(4)
 	}
 
 	// Compressing
-	printMessage("Compressing table file : "+filename, options.Verbosity, Info)
+	PrintMessage("Compressing table file : "+filename, options.Verbosity, Info)
 
 	// set up the output file
 	file, errcreate := os.Create(filename + ".tar.gz")
 
 	if errcreate != nil {
-		printMessage("error to create a compressed file: "+filename, options.Verbosity, Error)
+		PrintMessage("error to create a compressed file: "+filename, options.Verbosity, Error)
 		os.Exit(4)
 	}
 
@@ -398,15 +356,15 @@ func generateSchemaBackup(options Options, db string) {
 	defer tw.Close()
 
 	if errcompress := Compress(tw, filename); errcompress != nil {
-		printMessage("error to compress file: "+filename, options.Verbosity, Error)
+		PrintMessage("error to compress file: "+filename, options.Verbosity, Error)
 		os.Exit(4)
 	}
 
-	printMessage("Schema backup successfull : "+db, options.Verbosity, Info)
+	PrintMessage("Schema backup successfull : "+db, options.Verbosity, Info)
 }
 
-func generateSingleFileDataBackup(options Options, db string) {
-	printMessage("Generating single file data backup : "+db, options.Verbosity, Info)
+func GenerateSingleFileDataBackup(options Options, db string) {
+	PrintMessage("Generating single file data backup : "+db, options.Verbosity, Info)
 
 	var args []string
 	args = append(args, fmt.Sprintf("-h%s", options.HostName))
@@ -429,7 +387,7 @@ func generateSingleFileDataBackup(options Options, db string) {
 
 	args = append(args, db)
 
-	printMessage("mysqldump is being executed with parameters : "+strings.Join(args, " "), options.Verbosity, Info)
+	PrintMessage("mysqldump is being executed with parameters : "+strings.Join(args, " "), options.Verbosity, Info)
 
 	cmd := exec.Command(options.MySQLDumpPath, args...)
 	cmdOut, _ := cmd.StdoutPipe()
@@ -441,21 +399,21 @@ func generateSingleFileDataBackup(options Options, db string) {
 	err, _ := ioutil.ReadAll(cmdErr)
 	cmd.Wait()
 
-	printMessage("mysqldump output is : "+string(output), options.Verbosity, Info)
+	PrintMessage("mysqldump output is : "+string(output), options.Verbosity, Info)
 
 	if string(err) != "" {
-		printMessage("mysqldump error is: "+string(err), options.Verbosity, Error)
+		PrintMessage("mysqldump error is: "+string(err), options.Verbosity, Error)
 		os.Exit(4)
 	}
 
 	// Compressing
-	printMessage("Compressing table file : "+filename, options.Verbosity, Info)
+	PrintMessage("Compressing table file : "+filename, options.Verbosity, Info)
 
 	// set up the output file
 	file, errcreate := os.Create(filename + ".tar.gz")
 
 	if errcreate != nil {
-		printMessage("error to create a compressed file: "+filename, options.Verbosity, Error)
+		PrintMessage("error to create a compressed file: "+filename, options.Verbosity, Error)
 		os.Exit(4)
 	}
 
@@ -467,15 +425,15 @@ func generateSingleFileDataBackup(options Options, db string) {
 	defer tw.Close()
 
 	if errcompress := Compress(tw, filename); errcompress != nil {
-		printMessage("error to compress file: "+filename, options.Verbosity, Error)
+		PrintMessage("error to compress file: "+filename, options.Verbosity, Error)
 		os.Exit(4)
 	}
 
-	printMessage("Single file data backup successfull : "+db, options.Verbosity, Info)
+	PrintMessage("Single file data backup successfull : "+db, options.Verbosity, Info)
 }
 
-func generateSingleFileBackup(options Options, db string) {
-	printMessage("Generating single file backup : "+db, options.Verbosity, Info)
+func GenerateSingleFileBackup(options Options, db string) {
+	PrintMessage("Generating single file backup : "+db, options.Verbosity, Info)
 
 	var args []string
 	args = append(args, fmt.Sprintf("-h%s", options.HostName))
@@ -494,7 +452,7 @@ func generateSingleFileBackup(options Options, db string) {
 
 	args = append(args, db)
 
-	printMessage("mysqldump is being executed with parameters : "+strings.Join(args, " "), options.Verbosity, Info)
+	PrintMessage("mysqldump is being executed with parameters : "+strings.Join(args, " "), options.Verbosity, Info)
 
 	cmd := exec.Command(options.MySQLDumpPath, args...)
 	cmdOut, _ := cmd.StdoutPipe()
@@ -506,21 +464,21 @@ func generateSingleFileBackup(options Options, db string) {
 	err, _ := ioutil.ReadAll(cmdErr)
 	cmd.Wait()
 
-	printMessage("mysqldump output is : "+string(output), options.Verbosity, Info)
+	PrintMessage("mysqldump output is : "+string(output), options.Verbosity, Info)
 
 	if string(err) != "" {
-		printMessage("mysqldump error is: "+string(err), options.Verbosity, Error)
+		PrintMessage("mysqldump error is: "+string(err), options.Verbosity, Error)
 		os.Exit(4)
 	}
 
 	// Compressing
-	printMessage("Compressing table file : "+filename, options.Verbosity, Info)
+	PrintMessage("Compressing table file : "+filename, options.Verbosity, Info)
 
 	// set up the output file
 	file, errcreate := os.Create(filename + ".tar.gz")
 
 	if errcreate != nil {
-		printMessage("error to create a compressed file: "+filename, options.Verbosity, Error)
+		PrintMessage("error to create a compressed file: "+filename, options.Verbosity, Error)
 		os.Exit(4)
 	}
 
@@ -532,14 +490,14 @@ func generateSingleFileBackup(options Options, db string) {
 	defer tw.Close()
 
 	if errcompress := Compress(tw, filename); errcompress != nil {
-		printMessage("error to compress file: "+filename, options.Verbosity, Error)
+		PrintMessage("error to compress file: "+filename, options.Verbosity, Error)
 		os.Exit(4)
 	}
 
-	printMessage("Single file backup successfull : "+db, options.Verbosity, Info)
+	PrintMessage("Single file backup successfull : "+db, options.Verbosity, Info)
 }
 
-func getTotalRowCount(tables []Table) int {
+func GetTotalRowCount(tables []Table) int {
 	result := 0
 	for _, table := range tables {
 		result += table.RowCount
@@ -884,7 +842,7 @@ func GetOptions() *Options {
 	if outputdir == "" {
 		dir, err := os.Getwd()
 		if err != nil {
-			printMessage(err.Error(), verbosity, Error)
+			PrintMessage(err.Error(), verbosity, Error)
 		}
 
 		outputdir = dir
@@ -893,7 +851,7 @@ func GetOptions() *Options {
 	defaultsProvidedByUser := true
 
 	if _, err := os.Stat(mysqldumppath); os.IsNotExist(err) {
-		printMessage("mysqldump binary can not be found, please specify correct value for mysqldump-path parameter", verbosity, Error)
+		PrintMessage("mysqldump binary can not be found, please specify correct value for mysqldump-path parameter", verbosity, Error)
 		os.Exit(1)
 	}
 
@@ -903,9 +861,9 @@ func GetOptions() *Options {
 
 	opts := NewOptions(hostname, bind, username, password, databases, excludeddatabases, dbthreshold, tablethreshold, batchsize, forcesplit, additionals, verbosity, mysqldumppath, outputdir, defaultsProvidedByUser, dailyrotation, weeklyrotation, monthlyrotation)
 	stropts, _ := json.MarshalIndent(opts, "", "\t")
-	printMessage("Running with parameters", verbosity, Info)
-	printMessage(string(stropts), verbosity, Info)
-	printMessage("Running on operating system : "+runtime.GOOS, verbosity, Info)
+	PrintMessage("Running with parameters", verbosity, Info)
+	PrintMessage(string(stropts), verbosity, Info)
+	PrintMessage("Running on operating system : "+runtime.GOOS, verbosity, Info)
 
 	if test {
 		cmd := exec.Command(opts.MySQLDumpPath,
@@ -936,10 +894,10 @@ func GetOptions() *Options {
 
 		cmd.Wait()
 
-		printMessage("mysqldump output is : "+string(output), opts.Verbosity, Info)
+		PrintMessage("mysqldump output is : "+string(output), opts.Verbosity, Info)
 
 		if string(err) != "" {
-			printMessage("mysqldump error is: "+string(err), opts.Verbosity, Error)
+			PrintMessage("mysqldump error is: "+string(err), opts.Verbosity, Error)
 			os.Exit(4)
 		}
 
@@ -949,7 +907,7 @@ func GetOptions() *Options {
 	return opts
 }
 
-func printMessage(message string, verbosity int, messageType int) {
+func PrintMessage(message string, verbosity int, messageType int) {
 	colors := map[int]color.Attribute{Info: color.FgGreen, Warning: color.FgHiYellow, Error: color.FgHiRed}
 
 	if verbosity == 2 {

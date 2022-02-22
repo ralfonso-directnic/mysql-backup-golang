@@ -6,7 +6,11 @@ Mars is a tool for backing up multiple MySQL databases with multiples options. T
 
 
 ### Usage
+As a Libarary
 
+See main.go in cmd
+
+As a command
 ```
 $ go run mars.go -help
   -hostname string
