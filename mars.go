@@ -307,6 +307,7 @@ func GenerateSchemaBackup(options Options, db string) {
 	args = append(args, fmt.Sprintf("-p%s", options.Password))
 
 	args = append(args, "--no-data")
+	args = append(args,"--column-statistics=0")
 
 	if options.AdditionalMySQLDumpArgs != "" {
 		args = append(args, strings.Split(options.AdditionalMySQLDumpArgs, " ")...)
