@@ -556,6 +556,11 @@ func ListDirs(rootpath string) []string {
 	list := make([]string, 0, 10)
 
 	err := filepath.Walk(rootpath, func(path string, info os.FileInfo, err error) error {
+
+		if(err!=nil){
+			return err
+		}
+
 		if info.IsDir() {
 			list = append(list, path)
 		}
