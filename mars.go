@@ -407,7 +407,7 @@ func GenerateSingleFileDataBackup(options Options, db string) error{
 
 	PrintMessage("mysqldump output is : "+string(output), options.Verbosity, Info)
 
-	if string(err) != "" {
+	if string(err) != "" && !strings.Contains(string(err),"Using a password on the command line interface can be insecure") {
 		PrintMessage("mysqldump error is: "+string(err), options.Verbosity, Error)
 		return errors.New(string(err))
 	}
@@ -475,7 +475,7 @@ func GenerateSingleFileBackup(options Options, db string) error{
 
 	PrintMessage("mysqldump output is : "+string(output), options.Verbosity, Info)
 
-	if string(err) != "" {
+	if string(err) != "" && !strings.Contains(string(err),"Using a password on the command line interface can be insecure") {
 		PrintMessage("mysqldump error is: "+string(err), options.Verbosity, Error)
 		return errors.New(string(err))
 	}
